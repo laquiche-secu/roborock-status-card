@@ -1,4 +1,271 @@
+const EDITOR_SCHEMA = [
+  { name: "entity", required: true, selector: { entity: { domain: "vacuum" } } },
+  { name: "name", selector: { text: {} } },
+  { name: "duration_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "room_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } }
+];
+
+const EDITOR_LABELS = {
+  entity: "Entité vacuum (obligatoire)",
+  name: "Nom affiché",
+  duration_entity: "Capteur : durée du dernier nettoyage",
+  room_entity: "Capteur : pièce actuelle",
+  last_clean_entity: "Capteur : fin du dernier nettoyage"
+};
+
+class RoborockStatusCardEditor extends HTMLElement {
+
+  setConfig(config) {
+    this._config = { scenes: [], error_checks: [], ...config };
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._syncHass();
+  }
+
+  connectedCallback() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._render();
+  }
+
+  _emitChange(newConfig) {
+    this._config = newConfig;
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  _syncHass() {
+    if (!this.shadowRoot) return;
+    const form = this.shadowRoot.querySelector("ha-form");
+    if (form) form.hass = this._hass;
+    this.shadowRoot.querySelectorAll("ha-entity-picker, ha-icon-picker").forEach((el) => {
+      el.hass = this._hass;
+    });
+  }
+
+  _render() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    if (!this._config) return;
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        .section {
+          margin-bottom: 20px;
+        }
+        .section-title {
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+          margin-bottom: 8px;
+        }
+        .hint {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+          margin-bottom: 8px;
+        }
+        .scene-row, .check-row {
+          display: grid;
+          grid-template-columns: 2fr 1.3fr 1fr auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .remove-btn, .add-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          padding: 8px;
+          font-size: 13px;
+        }
+        .remove-btn {
+          padding: 8px 10px;
+          color: var(--error-color, #db4437);
+        }
+        .add-btn {
+          width: 100%;
+          margin-top: 4px;
+        }
+      </style>
+      <div class="section">
+        <ha-form></ha-form>
+      </div>
+      <div class="section">
+        <div class="section-title">Boutons de scènes</div>
+        <div id="scenes"></div>
+        <button class="add-btn" id="add-scene">
+          <ha-icon icon="mdi:plus"></ha-icon><span>Ajouter un bouton</span>
+        </button>
+      </div>
+      <div class="section">
+        <div class="section-title">Vérifications d'erreur</div>
+        <div class="hint">Un message n'apparaît sur la carte que si l'état du capteur diffère de l'état "normal" indiqué.</div>
+        <div id="checks"></div>
+        <button class="add-btn" id="add-check">
+          <ha-icon icon="mdi:plus"></ha-icon><span>Ajouter une vérification</span>
+        </button>
+      </div>
+    `;
+
+    const form = this.shadowRoot.querySelector("ha-form");
+    form.hass = this._hass;
+    form.schema = EDITOR_SCHEMA;
+    form.data = this._config;
+    form.computeLabel = (schema) => EDITOR_LABELS[schema.name] || schema.name;
+    form.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      this._emitChange({ ...this._config, ...ev.detail.value });
+    });
+
+    this._renderScenes();
+    this._renderChecks();
+
+    this.shadowRoot.getElementById("add-scene").addEventListener("click", () => {
+      const scenes = [...(this._config.scenes || []), { entity: "", name: "", icon: "mdi:play" }];
+      this._emitChange({ ...this._config, scenes });
+      this._renderScenes();
+    });
+
+    this.shadowRoot.getElementById("add-check").addEventListener("click", () => {
+      const error_checks = [...(this._config.error_checks || []), { entity: "", ok_state: "OK", name: "" }];
+      this._emitChange({ ...this._config, error_checks });
+      this._renderChecks();
+    });
+  }
+
+  _renderScenes() {
+    const container = this.shadowRoot.getElementById("scenes");
+    container.innerHTML = "";
+
+    (this._config.scenes || []).forEach((scene, index) => {
+      const row = document.createElement("div");
+      row.className = "scene-row";
+
+      const picker = document.createElement("ha-entity-picker");
+      picker.hass = this._hass;
+      picker.label = "Entité";
+      picker.includeDomains = ["button", "script"];
+      picker.value = scene.entity || "";
+      picker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._patchScene(index, { entity: ev.detail.value || "" });
+      });
+
+      const nameField = document.createElement("ha-textfield");
+      nameField.label = "Nom";
+      nameField.value = scene.name || "";
+      nameField.addEventListener("change", (ev) => {
+        this._patchScene(index, { name: ev.target.value });
+      });
+
+      const iconPicker = document.createElement("ha-icon-picker");
+      iconPicker.hass = this._hass;
+      iconPicker.label = "Icône";
+      iconPicker.value = scene.icon || "";
+      iconPicker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._patchScene(index, { icon: ev.detail.value || "" });
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "remove-btn";
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
+      removeBtn.addEventListener("click", () => {
+        const scenes = [...this._config.scenes];
+        scenes.splice(index, 1);
+        this._emitChange({ ...this._config, scenes });
+        this._renderScenes();
+      });
+
+      row.appendChild(picker);
+      row.appendChild(nameField);
+      row.appendChild(iconPicker);
+      row.appendChild(removeBtn);
+      container.appendChild(row);
+    });
+  }
+
+  _patchScene(index, patch) {
+    const scenes = [...this._config.scenes];
+    scenes[index] = { ...scenes[index], ...patch };
+    this._emitChange({ ...this._config, scenes });
+  }
+
+  _renderChecks() {
+    const container = this.shadowRoot.getElementById("checks");
+    container.innerHTML = "";
+
+    (this._config.error_checks || []).forEach((check, index) => {
+      const row = document.createElement("div");
+      row.className = "check-row";
+
+      const picker = document.createElement("ha-entity-picker");
+      picker.hass = this._hass;
+      picker.label = "Capteur";
+      picker.value = check.entity || "";
+      picker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._patchCheck(index, { entity: ev.detail.value || "" });
+      });
+
+      const nameField = document.createElement("ha-textfield");
+      nameField.label = "Libellé";
+      nameField.value = check.name || "";
+      nameField.addEventListener("change", (ev) => {
+        this._patchCheck(index, { name: ev.target.value });
+      });
+
+      const okField = document.createElement("ha-textfield");
+      okField.label = "État normal";
+      okField.value = check.ok_state || "";
+      okField.addEventListener("change", (ev) => {
+        this._patchCheck(index, { ok_state: ev.target.value });
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "remove-btn";
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
+      removeBtn.addEventListener("click", () => {
+        const error_checks = [...this._config.error_checks];
+        error_checks.splice(index, 1);
+        this._emitChange({ ...this._config, error_checks });
+        this._renderChecks();
+      });
+
+      row.appendChild(picker);
+      row.appendChild(nameField);
+      row.appendChild(okField);
+      row.appendChild(removeBtn);
+      container.appendChild(row);
+    });
+  }
+
+  _patchCheck(index, patch) {
+    const error_checks = [...this._config.error_checks];
+    error_checks[index] = { ...error_checks[index], ...patch };
+    this._emitChange({ ...this._config, error_checks });
+  }
+}
+
+customElements.define("roborock-status-card-editor", RoborockStatusCardEditor);
+
 class RoborockStatusCard extends HTMLElement {
+
+  static getConfigElement() {
+    return document.createElement("roborock-status-card-editor");
+  }
 
   setConfig(config) {
     if (!config.entity) {
@@ -19,17 +286,23 @@ class RoborockStatusCard extends HTMLElement {
     return 5;
   }
 
-  static getStubConfig() {
+  static getStubConfig(hass) {
+    const vacuumEntity = Object.keys(hass.states).find((id) => id.startsWith("vacuum."));
     return {
-      entity: "vacuum.nestor_ii",
+      entity: vacuumEntity || "vacuum.nestor_ii",
       duration_entity: "",
       room_entity: "",
       last_clean_entity: "",
-      water_entity: "",
-      water_ok_state: "OK",
-      error_entity: "",
-      error_ok_state: "Aucun",
-      scenes: []
+      scenes: [],
+      error_checks: [
+        { entity: "", ok_state: "OK", name: "Erreur du dock" },
+        { entity: "", ok_state: "OK", name: "Réservoir d'eau sale" },
+        { entity: "", ok_state: "OK", name: "Réservoir d'eau propre" },
+        { entity: "", ok_state: "Aucun", name: "Erreur de l'aspirateur" },
+        { entity: "", ok_state: "OK", name: "Pénurie d'eau" },
+        { entity: "", ok_state: "Attaché", name: "Réservoir d'eau fixé" },
+        { entity: "", ok_state: "Attachée", name: "Serpillière fixée" }
+      ]
     };
   }
 
@@ -43,9 +316,9 @@ class RoborockStatusCard extends HTMLElement {
     this._hass.callService(domain, service, { entity_id: entityId });
   }
 
-  _renderPill(label, entityId) {
+  _renderPill(label, entityId, formatter) {
     const st = this._state(entityId);
-    const value = st ? st.state : "—";
+    const value = st ? (formatter ? formatter(st) : st.state) : "—";
     return `
       <div class="pill">
         <div class="pill-label">${label}</div>
@@ -54,17 +327,30 @@ class RoborockStatusCard extends HTMLElement {
     `;
   }
 
-  _renderWarning(entityId, okState) {
-    const st = this._state(entityId);
-    if (!st || !okState) return "";
-    if (st.state === okState) return "";
-    const name = st.attributes.friendly_name || entityId;
-    return `
-      <div class="warning">
-        <ha-icon icon="mdi:alert"></ha-icon>
-        <span>${name} : ${st.state}</span>
-      </div>
-    `;
+  _formatDuration(st) {
+    const num = parseFloat(st.state);
+    if (isNaN(num)) return st.state;
+    const unit = st.attributes.unit_of_measurement || "min";
+    return `${Math.round(num)} ${unit}`;
+  }
+
+  _renderErrorChecks() {
+    const checks = this._config.error_checks || [];
+    const alerts = checks
+      .map((check) => {
+        const st = this._state(check.entity);
+        if (!st || check.ok_state == null) return null;
+        if (st.state === check.ok_state) return null;
+        const label = check.name || st.attributes.friendly_name || check.entity;
+        return `
+          <div class="warning">
+            <ha-icon icon="mdi:alert"></ha-icon>
+            <span>${label} : ${st.state}</span>
+          </div>
+        `;
+      })
+      .filter(Boolean);
+    return alerts.join("");
   }
 
   _renderScenes() {
@@ -211,13 +497,12 @@ class RoborockStatusCard extends HTMLElement {
         </div>
 
         <div class="grid">
-          ${this._renderPill("Durée", this._config.duration_entity)}
+          ${this._renderPill("Durée", this._config.duration_entity, (st) => this._formatDuration(st))}
           ${this._renderPill("Pièce", this._config.room_entity)}
           ${this._renderPill("Dernier passage", this._config.last_clean_entity)}
         </div>
 
-        ${this._renderWarning(this._config.water_entity, this._config.water_ok_state)}
-        ${this._renderWarning(this._config.error_entity, this._config.error_ok_state)}
+        ${this._renderErrorChecks()}
 
         ${this._renderScenes()}
 
