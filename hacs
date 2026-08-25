@@ -1,0 +1,6 @@
+{
+  "name": "Roborock status card",
+  "render_readme": true,
+  "filename": "roborock-status-card.js",
+  "content_in_root": true
+}
