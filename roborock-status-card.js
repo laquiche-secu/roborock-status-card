@@ -80,7 +80,7 @@ class RoborockStatusCardEditor extends HTMLElement {
         }
         .check-row {
           display: grid;
-          grid-template-columns: 1.6fr 1.1fr 1fr auto auto;
+          grid-template-columns: 1.5fr 1fr 1fr 1.2fr auto auto;
           gap: 8px;
           align-items: center;
           margin-bottom: 8px;
@@ -162,7 +162,7 @@ class RoborockStatusCardEditor extends HTMLElement {
     });
 
     this.shadowRoot.getElementById("add-check").addEventListener("click", () => {
-      const error_checks = [...(this._config.error_checks || []), { entity: "", ok_state: "OK", name: "" }];
+      const error_checks = [...(this._config.error_checks || []), { entity: "", ok_state: "OK", name: "", error_message: "" }];
       this._emitChange({ ...this._config, error_checks });
       this._renderChecks();
     });
@@ -280,6 +280,13 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._patchCheck(index, { ok_state: ev.target.value });
       });
 
+      const errorMessageField = document.createElement("ha-textfield");
+      errorMessageField.label = "Message d'erreur";
+      errorMessageField.value = check.error_message || "";
+      errorMessageField.addEventListener("change", (ev) => {
+        this._patchCheck(index, { error_message: ev.target.value });
+      });
+
       const useCurrentBtn = document.createElement("button");
       useCurrentBtn.className = "use-current-btn";
       useCurrentBtn.title = "Utiliser l'état actuel comme état normal";
@@ -303,6 +310,7 @@ class RoborockStatusCardEditor extends HTMLElement {
       row.appendChild(picker);
       row.appendChild(nameField);
       row.appendChild(okSelect);
+      row.appendChild(errorMessageField);
       row.appendChild(useCurrentBtn);
       row.appendChild(removeBtn);
       container.appendChild(row);
@@ -353,13 +361,13 @@ class RoborockStatusCard extends HTMLElement {
       last_clean_entity: "",
       scenes: [],
       error_checks: [
-        { entity: "", ok_state: "OK", name: "Erreur du dock" },
-        { entity: "", ok_state: "OK", name: "Réservoir d'eau sale" },
-        { entity: "", ok_state: "OK", name: "Réservoir d'eau propre" },
-        { entity: "", ok_state: "Aucun", name: "Erreur de l'aspirateur" },
-        { entity: "", ok_state: "OK", name: "Pénurie d'eau" },
-        { entity: "", ok_state: "Attaché", name: "Réservoir d'eau fixé" },
-        { entity: "", ok_state: "Attachée", name: "Serpillière fixée" }
+        { entity: "", ok_state: "OK", name: "Erreur du dock", error_message: "" },
+        { entity: "", ok_state: "OK", name: "Réservoir d'eau sale", error_message: "" },
+        { entity: "", ok_state: "OK", name: "Réservoir d'eau propre", error_message: "" },
+        { entity: "", ok_state: "Aucun", name: "Erreur de l'aspirateur", error_message: "" },
+        { entity: "", ok_state: "OK", name: "Pénurie d'eau", error_message: "" },
+        { entity: "", ok_state: "Attaché", name: "Réservoir d'eau fixé", error_message: "" },
+        { entity: "", ok_state: "Attachée", name: "Serpillière fixée", error_message: "" }
       ]
     };
   }
@@ -413,7 +421,7 @@ class RoborockStatusCard extends HTMLElement {
         const st = this._state(check.entity);
         if (!st || check.ok_state == null) return null;
         if (st.state === check.ok_state) return null;
-        const label = check.name || st.attributes.friendly_name || check.entity;
+        const label = check.error_message || check.name || st.attributes.friendly_name || check.entity;
         return `
           <div class="warning">
             <ha-icon icon="mdi:alert"></ha-icon>
