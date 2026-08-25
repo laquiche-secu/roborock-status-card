@@ -414,6 +414,33 @@ class RoborockStatusCard extends HTMLElement {
     return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
+  _getBatteryPercentage() {
+    if (this._config.battery_entity) {
+      const batteryState = this._state(this._config.battery_entity);
+      if (batteryState) {
+        const percentage = parseFloat(batteryState.state);
+        return isNaN(percentage) ? null : percentage;
+      }
+    } else {
+      const vacuum = this._state(this._config.entity);
+      if (vacuum && vacuum.attributes.battery_level != null) {
+        return vacuum.attributes.battery_level;
+      }
+    }
+    return null;
+  }
+
+  _getBatteryIcon() {
+    const percentage = this._getBatteryPercentage();
+    if (percentage === null) return "mdi:battery";
+    
+    if (percentage >= 80) return "mdi:battery";
+    if (percentage >= 60) return "mdi:battery-60";
+    if (percentage >= 40) return "mdi:battery-40";
+    if (percentage >= 20) return "mdi:battery-20";
+    return "mdi:battery-alert";
+  }
+
   _renderErrorChecks() {
     const checks = this._config.error_checks || [];
     const alerts = checks
@@ -466,6 +493,7 @@ class RoborockStatusCard extends HTMLElement {
     }
     
     const isCleaning = vacuum && vacuum.state === "cleaning";
+    const batteryIcon = this._getBatteryIcon();
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -503,6 +531,9 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 4px;
+        }
+        .battery ha-icon {
+          --mdc-icon-size: 20px;
         }
         .grid {
           display: grid;
@@ -585,7 +616,7 @@ class RoborockStatusCard extends HTMLElement {
             </div>
           </div>
           <div class="battery">
-            <ha-icon icon="mdi:battery"></ha-icon>${battery}
+            <ha-icon icon="${batteryIcon}"></ha-icon>${battery}
           </div>
         </div>
 
