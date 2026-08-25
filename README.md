@@ -13,6 +13,12 @@ Carte Lovelace compacte pour piloter et surveiller un robot Roborock dans Home A
 
 ## Utilisation
 
+### Via l'interface graphique
+
+Ajoute une carte, choisis **"Roborock status card"** dans la liste, puis renseigne les champs (entité vacuum, capteurs, seuils d'alerte) et ajoute tes boutons de scènes directement depuis le formulaire — aucun YAML à écrire.
+
+### Via YAML
+
 Ajoute une carte **Manuel** dans ton tableau de bord avec la configuration suivante (adapte les `entity_id` aux tiens) :
 
 ```yaml
@@ -21,10 +27,6 @@ entity: vacuum.nestor_ii
 duration_entity: sensor.nestor_ii_duree_de_nettoyage
 room_entity: sensor.nestor_ii_piece_actuelle
 last_clean_entity: sensor.nestor_ii_fin_du_dernier_nettoyage
-water_entity: sensor.nestor_ii_reservoir_d_eau_propre
-water_ok_state: "OK"
-error_entity: sensor.nestor_ii_erreur_de_l_aspirateur
-error_ok_state: "Aucun"
 scenes:
   - entity: button.nestor_ii_apres_les_repas
     name: Après les repas
@@ -38,6 +40,28 @@ scenes:
   - entity: button.nestor_ii_rdc
     name: RdC
     icon: mdi:stairs-up
+error_checks:
+  - entity: sensor.nestor_ii_erreur_de_dock
+    name: Erreur du dock
+    ok_state: "OK"
+  - entity: sensor.nestor_ii_reservoir_d_eau_sale
+    name: Réservoir d'eau sale
+    ok_state: "OK"
+  - entity: sensor.nestor_ii_reservoir_d_eau_propre
+    name: Réservoir d'eau propre
+    ok_state: "OK"
+  - entity: sensor.nestor_ii_erreur_de_l_aspirateur
+    name: Erreur de l'aspirateur
+    ok_state: "Aucun"
+  - entity: sensor.nestor_ii_penurie_d_eau
+    name: Pénurie d'eau
+    ok_state: "OK"
+  - entity: binary_sensor.nestor_ii_reservoir_d_eau_fixe
+    name: Réservoir d'eau fixé
+    ok_state: "Attaché"
+  - entity: binary_sensor.nestor_ii_serpilliere_fixee
+    name: Serpillière fixée
+    ok_state: "Attachée"
 ```
 
 ### Options
@@ -46,14 +70,10 @@ scenes:
 |---|---|---|
 | `entity` | oui | Entité `vacuum.*` du robot |
 | `name` | non | Nom affiché (par défaut : nom de l'entité) |
-| `duration_entity` | non | Capteur durée du dernier nettoyage |
+| `duration_entity` | non | Capteur durée du dernier nettoyage (la valeur est automatiquement arrondie à la minute) |
 | `room_entity` | non | Capteur pièce actuelle |
 | `last_clean_entity` | non | Capteur fin du dernier nettoyage |
-| `water_entity` / `water_ok_state` | non | Capteur réservoir d'eau + état considéré normal |
-| `error_entity` / `error_ok_state` | non | Capteur erreur aspirateur + état considéré normal |
 | `scenes` | non | Liste de boutons (`entity`, `name`, `icon`) reliés à des entités `button.*` |
+| `error_checks` | non | Liste de vérifications (`entity`, `name`, `ok_state`). Un message n'apparaît que si l'état du capteur diffère de `ok_state`. |
 
-Les bandeaux d'alerte n'apparaissent que si l'état du capteur diffère de l'état "OK" renseigné.
-
-
-HACS a besoin d'au moins une **release GitHub** (ou tag) publiée pour détecter une version.
+Ajoute autant de `error_checks` que nécessaire (dock, réservoirs, pénurie d'eau, fixation des accessoires, etc.) : la carte reste vide de toute alerte tant que tout va bien, et n'affiche que les lignes en anomalie.
