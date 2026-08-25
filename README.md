@@ -55,18 +55,5 @@ scenes:
 
 Les bandeaux d'alerte n'apparaissent que si l'état du capteur diffère de l'état "OK" renseigné.
 
-## Publier ce dépôt sur GitHub
-
-```bash
-cd roborock-status-card
-git init
-git add .
-git commit -m "Roborock status card v1.0.0"
-git branch -M main
-git remote add origin https://github.com/<ton-user>/roborock-status-card.git
-git push -u origin main
-git tag v1.0.0
-git push origin v1.0.0
-```
 
 HACS a besoin d'au moins une **release GitHub** (ou tag) publiée pour détecter une version.
