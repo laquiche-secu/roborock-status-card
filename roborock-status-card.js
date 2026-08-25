@@ -57,11 +57,21 @@ class RoborockStatusCardEditor extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
+        :host {
+          display: block;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        *, *::before, *::after {
+          box-sizing: border-box;
+        }
         .section {
           margin-bottom: 24px;
           padding: 16px;
           background: var(--secondary-background-color);
           border-radius: 8px;
+          width: 100%;
+          overflow: hidden;
         }
         .section-title {
           font-size: 14px;
@@ -80,13 +90,16 @@ class RoborockStatusCardEditor extends HTMLElement {
         }
         .scene-row {
           display: grid;
-          grid-template-columns: 2fr 1.3fr 1fr auto;
+          grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
           gap: 12px;
           align-items: center;
           margin-bottom: 12px;
           padding: 12px;
           background: var(--card-background-color);
           border-radius: 6px;
+        }
+        .scene-row > * {
+          min-width: 0;
         }
         .check-row {
           display: grid;
@@ -97,11 +110,16 @@ class RoborockStatusCardEditor extends HTMLElement {
           background: var(--card-background-color);
           border-radius: 6px;
           border-left: 3px solid var(--primary-color);
+          width: 100%;
         }
         .check-row-inner {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
           gap: 12px;
+          width: 100%;
+        }
+        .check-row-inner > * {
+          min-width: 0;
         }
         .check-row-buttons {
           display: flex;
@@ -162,16 +180,20 @@ class RoborockStatusCardEditor extends HTMLElement {
           font-size: 13px;
           padding: 8px 12px;
           width: 100%;
+          max-width: 100%;
           box-sizing: border-box;
         }
         ha-textfield {
           width: 100%;
+          min-width: 0;
         }
         ha-entity-picker {
           width: 100%;
+          min-width: 0;
         }
         ha-icon-picker {
           width: 100%;
+          min-width: 0;
         }
       </style>
       <div class="section">
@@ -359,7 +381,7 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._renderChecks();
       });
 
-      // Disposition améliorée : 2 colonnes
+      // Disposition améliorée : colonnes responsives (se replient sur petit écran)
       const innerDiv = document.createElement("div");
       innerDiv.className = "check-row-inner";
       innerDiv.appendChild(picker);
@@ -480,26 +502,39 @@ class RoborockStatusCard extends HTMLElement {
       const batteryState = this._state(this._config.battery_entity);
       if (batteryState) {
         const percentage = parseFloat(batteryState.state);
-        return isNaN(percentage) ? null : percentage;
+        if (!isNaN(percentage)) return percentage;
       }
-    } else {
-      const vacuum = this._state(this._config.entity);
-      if (vacuum && vacuum.attributes.battery_level != null) {
-        return vacuum.attributes.battery_level;
-      }
+    }
+    // Repli sur l'attribut battery_level du vacuum si pas de capteur dédié
+    // (ou si le capteur configuré n'a pas encore d'état valide)
+    const vacuum = this._state(this._config.entity);
+    if (vacuum && vacuum.attributes.battery_level != null) {
+      return vacuum.attributes.battery_level;
     }
     return null;
   }
 
   _getBatteryIcon() {
     const percentage = this._getBatteryPercentage();
-    if (percentage === null) return "mdi:battery";
-    
-    if (percentage >= 80) return "mdi:battery";
-    if (percentage >= 60) return "mdi:battery-60";
-    if (percentage >= 40) return "mdi:battery-40";
-    if (percentage >= 20) return "mdi:battery-20";
-    return "mdi:battery-alert";
+    if (percentage === null) return "mdi:battery-unknown";
+
+    const vacuum = this._state(this._config.entity);
+    // Le robot est considéré "en charge" quand il est retourné au dock
+    // et que la batterie n'est pas encore pleine.
+    const isCharging = !!vacuum && vacuum.state === "docked" && percentage < 100;
+
+    // Palier par tranche de 10% pour un rendu vraiment progressif
+    const step = Math.min(100, Math.max(0, Math.round(percentage / 10) * 10));
+
+    if (isCharging) {
+      if (step <= 0) return "mdi:battery-charging-outline";
+      if (step >= 100) return "mdi:battery-charging";
+      return `mdi:battery-charging-${step}`;
+    }
+
+    if (step <= 10) return "mdi:battery-alert";
+    if (step >= 100) return "mdi:battery";
+    return `mdi:battery-${step}`;
   }
 
   _renderErrorChecks() {
@@ -539,19 +574,27 @@ class RoborockStatusCard extends HTMLElement {
     const vacuum = this._state(this._config.entity);
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
     const stateText = vacuum ? vacuum.state : "indisponible";
-    
+
     // Obtenir le pourcentage de batterie une seule fois
     const batteryPercentage = this._getBatteryPercentage();
     let battery = "—";
     if (batteryPercentage !== null) {
       battery = `${batteryPercentage}%`;
     }
-    
+
     const isCleaning = vacuum && vacuum.state === "cleaning";
     const batteryIcon = this._getBatteryIcon();
 
     this.shadowRoot.innerHTML = `
       <style>
+        :host {
+          display: block;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        *, *::before, *::after {
+          box-sizing: border-box;
+        }
         ha-card {
           padding: 16px;
         }
@@ -565,15 +608,22 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 10px;
+          min-width: 0;
         }
         .name-row ha-icon {
           --mdc-icon-size: 24px;
           color: var(--primary-color);
         }
+        .titles {
+          min-width: 0;
+        }
         .titles .name {
           font-size: 15px;
           font-weight: 500;
           color: var(--primary-text-color);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .titles .state {
           font-size: 12px;
@@ -586,6 +636,7 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 4px;
+          flex-shrink: 0;
         }
         .battery ha-icon {
           --mdc-icon-size: 20px;
@@ -601,6 +652,7 @@ class RoborockStatusCard extends HTMLElement {
           border-radius: 8px;
           padding: 8px 6px;
           text-align: center;
+          min-width: 0;
         }
         .pill-label {
           font-size: 11px;
@@ -611,6 +663,9 @@ class RoborockStatusCard extends HTMLElement {
           font-size: 13px;
           font-weight: 500;
           color: var(--primary-text-color);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .warning {
           display: flex;
@@ -625,10 +680,11 @@ class RoborockStatusCard extends HTMLElement {
         }
         .warning ha-icon {
           --mdc-icon-size: 16px;
+          flex-shrink: 0;
         }
         .scenes {
           display: grid;
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
           gap: 8px;
           margin-bottom: 12px;
         }
@@ -644,6 +700,7 @@ class RoborockStatusCard extends HTMLElement {
           background: var(--card-background-color);
           color: var(--primary-text-color);
           cursor: pointer;
+          min-width: 0;
         }
         .scene-btn:active, .action-btn:active {
           opacity: 0.7;
@@ -652,6 +709,10 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           gap: 8px;
         }
+        .action-btn {
+          flex: 1;
+          min-width: 0;
+        }
         .action-btn.primary {
           background: var(--primary-color);
           color: var(--text-primary-color, #fff);
@@ -659,6 +720,7 @@ class RoborockStatusCard extends HTMLElement {
         }
         .action-btn ha-icon, .scene-btn ha-icon {
           --mdc-icon-size: 16px;
+          flex-shrink: 0;
         }
       </style>
       <ha-card>
