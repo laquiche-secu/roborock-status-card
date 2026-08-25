@@ -58,32 +58,55 @@ class RoborockStatusCardEditor extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         .section {
-          margin-bottom: 20px;
+          margin-bottom: 24px;
+          padding: 16px;
+          background: var(--secondary-background-color);
+          border-radius: 8px;
         }
         .section-title {
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 600;
           color: var(--primary-text-color);
-          margin-bottom: 8px;
+          margin-bottom: 16px;
         }
         .hint {
           font-size: 12px;
           color: var(--secondary-text-color);
-          margin-bottom: 8px;
+          margin-bottom: 12px;
+          padding: 8px;
+          background: var(--card-background-color);
+          border-radius: 4px;
+          border-left: 3px solid var(--primary-color);
         }
         .scene-row {
           display: grid;
           grid-template-columns: 2fr 1.3fr 1fr auto;
-          gap: 8px;
+          gap: 12px;
           align-items: center;
-          margin-bottom: 8px;
+          margin-bottom: 12px;
+          padding: 12px;
+          background: var(--card-background-color);
+          border-radius: 6px;
         }
         .check-row {
           display: grid;
-          grid-template-columns: 1.5fr 1fr 1fr 1.2fr auto auto;
+          grid-template-columns: 1fr;
+          gap: 12px;
+          margin-bottom: 16px;
+          padding: 12px;
+          background: var(--card-background-color);
+          border-radius: 6px;
+          border-left: 3px solid var(--primary-color);
+        }
+        .check-row-inner {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .check-row-buttons {
+          display: flex;
           gap: 8px;
-          align-items: center;
-          margin-bottom: 8px;
+          justify-content: flex-end;
         }
 
         .remove-btn, .add-btn {
@@ -96,29 +119,58 @@ class RoborockStatusCardEditor extends HTMLElement {
           background: var(--card-background-color);
           color: var(--primary-text-color);
           cursor: pointer;
-          padding: 8px;
+          padding: 8px 12px;
           font-size: 13px;
+          transition: all 0.2s ease;
         }
         .remove-btn {
-          padding: 8px 10px;
           color: var(--error-color, #db4437);
         }
+        .remove-btn:hover {
+          background: var(--error-color, #db4437);
+          color: white;
+        }
         .use-current-btn {
-          padding: 8px 10px;
+          padding: 8px 12px;
           color: var(--primary-color);
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          background: var(--card-background-color);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .use-current-btn:hover {
+          background: var(--primary-color);
+          color: white;
         }
         .add-btn {
           width: 100%;
-          margin-top: 4px;
+          margin-top: 8px;
+          background: var(--primary-color);
+          color: white;
+          border: none;
+        }
+        .add-btn:hover {
+          opacity: 0.9;
         }
         .ok-select {
-          height: 36px;
+          min-height: 40px;
           border: 1px solid var(--divider-color);
           border-radius: 8px;
           background: var(--card-background-color);
           color: var(--primary-text-color);
           font-size: 13px;
-          padding: 0 8px;
+          padding: 8px 12px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        ha-textfield {
+          width: 100%;
+        }
+        ha-entity-picker {
+          width: 100%;
+        }
+        ha-icon-picker {
           width: 100%;
         }
       </style>
@@ -307,12 +359,21 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._renderChecks();
       });
 
-      row.appendChild(picker);
-      row.appendChild(nameField);
-      row.appendChild(okSelect);
-      row.appendChild(errorMessageField);
-      row.appendChild(useCurrentBtn);
-      row.appendChild(removeBtn);
+      // Disposition améliorée : 2 colonnes
+      const innerDiv = document.createElement("div");
+      innerDiv.className = "check-row-inner";
+      innerDiv.appendChild(picker);
+      innerDiv.appendChild(nameField);
+      innerDiv.appendChild(okSelect);
+      innerDiv.appendChild(errorMessageField);
+
+      const buttonsDiv = document.createElement("div");
+      buttonsDiv.className = "check-row-buttons";
+      buttonsDiv.appendChild(useCurrentBtn);
+      buttonsDiv.appendChild(removeBtn);
+
+      row.appendChild(innerDiv);
+      row.appendChild(buttonsDiv);
       container.appendChild(row);
     });
   }
@@ -479,17 +540,11 @@ class RoborockStatusCard extends HTMLElement {
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
     const stateText = vacuum ? vacuum.state : "indisponible";
     
-    // Déterminer la source de la batterie
+    // Obtenir le pourcentage de batterie une seule fois
+    const batteryPercentage = this._getBatteryPercentage();
     let battery = "—";
-    if (this._config.battery_entity) {
-      // Si une entité de batterie est configurée, l'utiliser
-      const batteryState = this._state(this._config.battery_entity);
-      if (batteryState) {
-        battery = `${batteryState.state}${batteryState.attributes.unit_of_measurement || "%"}`;
-      }
-    } else if (vacuum && vacuum.attributes.battery_level != null) {
-      // Sinon, utiliser battery_level de l'entité vacuum
-      battery = `${vacuum.attributes.battery_level}%`;
+    if (batteryPercentage !== null) {
+      battery = `${batteryPercentage}%`;
     }
     
     const isCleaning = vacuum && vacuum.state === "cleaning";
