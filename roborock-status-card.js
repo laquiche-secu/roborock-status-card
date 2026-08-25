@@ -69,9 +69,16 @@ class RoborockStatusCardEditor extends HTMLElement {
           color: var(--secondary-text-color);
           margin-bottom: 8px;
         }
-        .scene-row, .check-row {
+        .scene-row {
           display: grid;
           grid-template-columns: 2fr 1.3fr 1fr auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+        .check-row {
+          display: grid;
+          grid-template-columns: 1.6fr 1.1fr 1fr auto auto;
           gap: 8px;
           align-items: center;
           margin-bottom: 8px;
@@ -94,9 +101,23 @@ class RoborockStatusCardEditor extends HTMLElement {
           padding: 8px 10px;
           color: var(--error-color, #db4437);
         }
+        .use-current-btn {
+          padding: 8px 10px;
+          color: var(--primary-color);
+        }
         .add-btn {
           width: 100%;
           margin-top: 4px;
+        }
+        .ok-select {
+          height: 36px;
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-size: 13px;
+          padding: 0 8px;
+          width: 100%;
         }
       </style>
       <div class="section">
@@ -218,6 +239,7 @@ class RoborockStatusCardEditor extends HTMLElement {
       picker.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         this._patchCheck(index, { entity: ev.detail.value || "" });
+        this._renderChecks();
       });
 
       const nameField = document.createElement("ha-textfield");
@@ -227,11 +249,43 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._patchCheck(index, { name: ev.target.value });
       });
 
-      const okField = document.createElement("ha-textfield");
-      okField.label = "État normal";
-      okField.value = check.ok_state || "";
-      okField.addEventListener("change", (ev) => {
+      const currentState = check.entity && this._hass ? this._hass.states[check.entity] : null;
+      const options = new Set();
+      if (check.ok_state) options.add(check.ok_state);
+      if (currentState) options.add(currentState.state);
+      if (check.entity && check.entity.startsWith("binary_sensor.")) {
+        options.add("on");
+        options.add("off");
+      }
+      ["OK", "Aucun", "Problème", "Erreur", "Attaché", "Détaché"].forEach((o) => options.add(o));
+
+      const okSelect = document.createElement("select");
+      okSelect.className = "ok-select";
+      okSelect.title = "État normal";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "État normal…";
+      placeholder.disabled = true;
+      okSelect.appendChild(placeholder);
+      options.forEach((opt) => {
+        const optionEl = document.createElement("option");
+        optionEl.value = opt;
+        optionEl.textContent = opt;
+        okSelect.appendChild(optionEl);
+      });
+      okSelect.value = check.ok_state || "";
+      okSelect.addEventListener("change", (ev) => {
         this._patchCheck(index, { ok_state: ev.target.value });
+      });
+
+      const useCurrentBtn = document.createElement("button");
+      useCurrentBtn.className = "use-current-btn";
+      useCurrentBtn.title = "Utiliser l'état actuel comme état normal";
+      useCurrentBtn.innerHTML = '<ha-icon icon="mdi:target"></ha-icon>';
+      useCurrentBtn.addEventListener("click", () => {
+        if (!currentState) return;
+        this._patchCheck(index, { ok_state: currentState.state });
+        this._renderChecks();
       });
 
       const removeBtn = document.createElement("button");
@@ -246,7 +300,8 @@ class RoborockStatusCardEditor extends HTMLElement {
 
       row.appendChild(picker);
       row.appendChild(nameField);
-      row.appendChild(okField);
+      row.appendChild(okSelect);
+      row.appendChild(useCurrentBtn);
       row.appendChild(removeBtn);
       container.appendChild(row);
     });
@@ -332,6 +387,20 @@ class RoborockStatusCard extends HTMLElement {
     if (isNaN(num)) return st.state;
     const unit = st.attributes.unit_of_measurement || "min";
     return `${Math.round(num)} ${unit}`;
+  }
+
+  _formatTimestamp(st) {
+    const date = new Date(st.state);
+    if (isNaN(date.getTime())) return st.state;
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.round(diffMs / 60000);
+    if (diffMin < 1) return "à l'instant";
+    if (diffMin < 60) return `il y a ${diffMin} min`;
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return `il y a ${diffH} h`;
+    const diffJ = Math.round(diffH / 24);
+    if (diffJ < 7) return `il y a ${diffJ} j`;
+    return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
   _renderErrorChecks() {
@@ -499,7 +568,7 @@ class RoborockStatusCard extends HTMLElement {
         <div class="grid">
           ${this._renderPill("Durée", this._config.duration_entity, (st) => this._formatDuration(st))}
           ${this._renderPill("Pièce", this._config.room_entity)}
-          ${this._renderPill("Dernier passage", this._config.last_clean_entity)}
+          ${this._renderPill("Dernier passage", this._config.last_clean_entity, (st) => this._formatTimestamp(st))}
         </div>
 
         ${this._renderErrorChecks()}
