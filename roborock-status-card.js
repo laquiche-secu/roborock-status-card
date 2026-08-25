@@ -1,6 +1,7 @@
 const EDITOR_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "vacuum" } } },
   { name: "name", selector: { text: {} } },
+  { name: "battery_entity", selector: { entity: { domain: "sensor" } } },
   { name: "duration_entity", selector: { entity: { domain: "sensor" } } },
   { name: "room_entity", selector: { entity: { domain: "sensor" } } },
   { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } }
@@ -9,6 +10,7 @@ const EDITOR_SCHEMA = [
 const EDITOR_LABELS = {
   entity: "Entité vacuum (obligatoire)",
   name: "Nom affiché",
+  battery_entity: "Capteur : niveau de batterie",
   duration_entity: "Capteur : durée du dernier nettoyage",
   room_entity: "Capteur : pièce actuelle",
   last_clean_entity: "Capteur : fin du dernier nettoyage"
@@ -345,6 +347,7 @@ class RoborockStatusCard extends HTMLElement {
     const vacuumEntity = Object.keys(hass.states).find((id) => id.startsWith("vacuum."));
     return {
       entity: vacuumEntity || "vacuum.nestor_ii",
+      battery_entity: "",
       duration_entity: "",
       room_entity: "",
       last_clean_entity: "",
@@ -440,7 +443,20 @@ class RoborockStatusCard extends HTMLElement {
     const vacuum = this._state(this._config.entity);
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
     const stateText = vacuum ? vacuum.state : "indisponible";
-    const battery = vacuum && vacuum.attributes.battery_level != null ? `${vacuum.attributes.battery_level}%` : "—";
+    
+    // Déterminer la source de la batterie
+    let battery = "—";
+    if (this._config.battery_entity) {
+      // Si une entité de batterie est configurée, l'utiliser
+      const batteryState = this._state(this._config.battery_entity);
+      if (batteryState) {
+        battery = `${batteryState.state}${batteryState.attributes.unit_of_measurement || "%"}`;
+      }
+    } else if (vacuum && vacuum.attributes.battery_level != null) {
+      // Sinon, utiliser battery_level de l'entité vacuum
+      battery = `${vacuum.attributes.battery_level}%`;
+    }
+    
     const isCleaning = vacuum && vacuum.state === "cleaning";
 
     this.shadowRoot.innerHTML = `
