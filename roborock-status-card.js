@@ -3,6 +3,7 @@ const EDITOR_SCHEMA = [
   { name: "name", selector: { text: {} } },
   { name: "battery_entity", selector: { entity: { domain: "sensor" } } },
   { name: "duration_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "progress_entity", selector: { entity: { domain: "sensor" } } },
   { name: "room_entity", selector: { entity: { domain: "sensor" } } },
   { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } }
 ];
@@ -12,6 +13,7 @@ const EDITOR_LABELS = {
   name: "Nom affiché",
   battery_entity: "Capteur : niveau de batterie",
   duration_entity: "Capteur : durée du dernier nettoyage",
+  progress_entity: "Capteur : pourcentage d'avancement",
   room_entity: "Capteur : pièce actuelle",
   last_clean_entity: "Capteur : fin du dernier nettoyage"
 };
@@ -89,22 +91,19 @@ class RoborockStatusCardEditor extends HTMLElement {
           border-left: 3px solid var(--primary-color);
         }
         .scene-row {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-          gap: 12px;
-          align-items: center;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
           margin-bottom: 12px;
           padding: 12px;
           background: var(--card-background-color);
           border-radius: 6px;
-        }
-        .scene-row > * {
-          min-width: 0;
+          width: 100%;
         }
         .check-row {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
           margin-bottom: 16px;
           padding: 12px;
           background: var(--card-background-color);
@@ -112,14 +111,31 @@ class RoborockStatusCardEditor extends HTMLElement {
           border-left: 3px solid var(--primary-color);
           width: 100%;
         }
-        .check-row-inner {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 12px;
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
           width: 100%;
         }
-        .check-row-inner > * {
-          min-width: 0;
+        .field-label {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--secondary-text-color);
+        }
+        .text-input {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          background: var(--primary-background-color, var(--card-background-color));
+          color: var(--primary-text-color);
+          font-family: inherit;
+          font-size: 14px;
+          padding: 10px 12px;
+        }
+        .text-input:focus {
+          outline: none;
+          border-color: var(--primary-color);
         }
         .check-row-buttons {
           display: flex;
@@ -183,10 +199,6 @@ class RoborockStatusCardEditor extends HTMLElement {
           max-width: 100%;
           box-sizing: border-box;
         }
-        ha-textfield {
-          width: 100%;
-          min-width: 0;
-        }
         ha-entity-picker {
           width: 100%;
           min-width: 0;
@@ -242,6 +254,26 @@ class RoborockStatusCardEditor extends HTMLElement {
     });
   }
 
+  _labeledField(labelText, controlEl) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    const label = document.createElement("label");
+    label.className = "field-label";
+    label.textContent = labelText;
+    wrap.appendChild(label);
+    wrap.appendChild(controlEl);
+    return wrap;
+  }
+
+  _createTextInput(value, placeholder) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "text-input";
+    input.value = value || "";
+    if (placeholder) input.placeholder = placeholder;
+    return input;
+  }
+
   _renderScenes() {
     const container = this.shadowRoot.getElementById("scenes");
     container.innerHTML = "";
@@ -260,9 +292,7 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._patchScene(index, { entity: ev.detail.value || "" });
       });
 
-      const nameField = document.createElement("ha-textfield");
-      nameField.label = "Nom";
-      nameField.value = scene.name || "";
+      const nameField = this._createTextInput(scene.name, "Ex : Nettoyer le salon");
       nameField.addEventListener("change", (ev) => {
         this._patchScene(index, { name: ev.target.value });
       });
@@ -278,7 +308,7 @@ class RoborockStatusCardEditor extends HTMLElement {
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon><span>Supprimer</span>';
       removeBtn.addEventListener("click", () => {
         const scenes = [...this._config.scenes];
         scenes.splice(index, 1);
@@ -287,7 +317,7 @@ class RoborockStatusCardEditor extends HTMLElement {
       });
 
       row.appendChild(picker);
-      row.appendChild(nameField);
+      row.appendChild(this._labeledField("Nom", nameField));
       row.appendChild(iconPicker);
       row.appendChild(removeBtn);
       container.appendChild(row);
@@ -318,9 +348,7 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._renderChecks();
       });
 
-      const nameField = document.createElement("ha-textfield");
-      nameField.label = "Libellé";
-      nameField.value = check.name || "";
+      const nameField = this._createTextInput(check.name, "Ex : Erreur du dock");
       nameField.addEventListener("change", (ev) => {
         this._patchCheck(index, { name: ev.target.value });
       });
@@ -354,9 +382,7 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._patchCheck(index, { ok_state: ev.target.value });
       });
 
-      const errorMessageField = document.createElement("ha-textfield");
-      errorMessageField.label = "Message d'erreur";
-      errorMessageField.value = check.error_message || "";
+      const errorMessageField = this._createTextInput(check.error_message, "Ex : Le réservoir d'eau sale est plein");
       errorMessageField.addEventListener("change", (ev) => {
         this._patchCheck(index, { error_message: ev.target.value });
       });
@@ -373,7 +399,7 @@ class RoborockStatusCardEditor extends HTMLElement {
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon><span>Supprimer cette vérification</span>';
       removeBtn.addEventListener("click", () => {
         const error_checks = [...this._config.error_checks];
         error_checks.splice(index, 1);
@@ -381,20 +407,20 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._renderChecks();
       });
 
-      // Disposition améliorée : colonnes responsives (se replient sur petit écran)
-      const innerDiv = document.createElement("div");
-      innerDiv.className = "check-row-inner";
-      innerDiv.appendChild(picker);
-      innerDiv.appendChild(nameField);
-      innerDiv.appendChild(okSelect);
-      innerDiv.appendChild(errorMessageField);
+      // Disposition en colonne unique : chaque champ est étiqueté et pleine largeur,
+      // ce qui évite que les champs se retrouvent écrasés/invisibles sur un panneau étroit.
+      const okSelectWrap = this._labeledField("État normal", okSelect);
+      okSelectWrap.appendChild(useCurrentBtn);
+      useCurrentBtn.style.marginTop = "4px";
 
       const buttonsDiv = document.createElement("div");
       buttonsDiv.className = "check-row-buttons";
-      buttonsDiv.appendChild(useCurrentBtn);
       buttonsDiv.appendChild(removeBtn);
 
-      row.appendChild(innerDiv);
+      row.appendChild(picker);
+      row.appendChild(this._labeledField("Libellé", nameField));
+      row.appendChild(okSelectWrap);
+      row.appendChild(this._labeledField("Message d'erreur", errorMessageField));
       row.appendChild(buttonsDiv);
       container.appendChild(row);
     });
@@ -440,6 +466,7 @@ class RoborockStatusCard extends HTMLElement {
       entity: vacuumEntity || "vacuum.nestor_ii",
       battery_entity: "",
       duration_entity: "",
+      progress_entity: "",
       room_entity: "",
       last_clean_entity: "",
       scenes: [],
@@ -476,11 +503,38 @@ class RoborockStatusCard extends HTMLElement {
     `;
   }
 
+  _renderDurationProgressPill() {
+    const durationSt = this._state(this._config.duration_entity);
+    const progressSt = this._state(this._config.progress_entity);
+
+    let value = "—";
+    if (durationSt && progressSt) {
+      value = `${this._formatDuration(durationSt)} (${this._formatPercentage(progressSt)})`;
+    } else if (durationSt) {
+      value = this._formatDuration(durationSt);
+    } else if (progressSt) {
+      value = this._formatPercentage(progressSt);
+    }
+
+    return `
+      <div class="pill">
+        <div class="pill-label">Durée</div>
+        <div class="pill-value">${value}</div>
+      </div>
+    `;
+  }
+
   _formatDuration(st) {
     const num = parseFloat(st.state);
     if (isNaN(num)) return st.state;
     const unit = st.attributes.unit_of_measurement || "min";
     return `${Math.round(num)} ${unit}`;
+  }
+
+  _formatPercentage(st) {
+    const num = parseFloat(st.state);
+    if (isNaN(num)) return st.state;
+    return `${Math.round(num)}%`;
   }
 
   _formatTimestamp(st) {
@@ -643,7 +697,7 @@ class RoborockStatusCard extends HTMLElement {
         }
         .grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
           gap: 8px;
           margin-bottom: 12px;
         }
@@ -738,7 +792,7 @@ class RoborockStatusCard extends HTMLElement {
         </div>
 
         <div class="grid">
-          ${this._renderPill("Durée", this._config.duration_entity, (st) => this._formatDuration(st))}
+          ${this._renderDurationProgressPill()}
           ${this._renderPill("Pièce", this._config.room_entity)}
           ${this._renderPill("Dernier passage", this._config.last_clean_entity, (st) => this._formatTimestamp(st))}
         </div>
