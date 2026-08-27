@@ -1,27 +1,29 @@
 const EDITOR_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "vacuum" } } },
   { name: "name", selector: { text: {} } },
-  { name: "battery_entity", selector: { entity: { domain: "sensor" } } },
   { name: "duration_entity", selector: { entity: { domain: "sensor" } } },
-  { name: "progress_entity", selector: { entity: { domain: "sensor" } } },
   { name: "room_entity", selector: { entity: { domain: "sensor" } } },
-  { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } }
+  { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "mode_entity", selector: { entity: { domain: "select" } } },
+  { name: "mop_intensity_entity", selector: { entity: { domain: "select" } } },
+  { name: "room_clean_command", selector: { text: {} } }
 ];
 
 const EDITOR_LABELS = {
   entity: "Entité vacuum (obligatoire)",
   name: "Nom affiché",
-  battery_entity: "Capteur : niveau de batterie",
   duration_entity: "Capteur : durée du dernier nettoyage",
-  progress_entity: "Capteur : pourcentage d'avancement",
   room_entity: "Capteur : pièce actuelle",
-  last_clean_entity: "Capteur : fin du dernier nettoyage"
+  last_clean_entity: "Capteur : fin du dernier nettoyage",
+  mode_entity: "Sélecteur : mode de nettoyage",
+  mop_intensity_entity: "Sélecteur : intensité de frottement",
+  room_clean_command: "Commande vacuum.send_command pour nettoyer des pièces (défaut : app_segment_clean)"
 };
 
 class RoborockStatusCardEditor extends HTMLElement {
 
   setConfig(config) {
-    this._config = { scenes: [], error_checks: [], ...config };
+    this._config = { scenes: [], error_checks: [], rooms: [], ...config };
     this._render();
   }
 
@@ -59,88 +61,33 @@ class RoborockStatusCardEditor extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host {
-          display: block;
-          width: 100%;
-          box-sizing: border-box;
-        }
-        *, *::before, *::after {
-          box-sizing: border-box;
-        }
         .section {
-          margin-bottom: 24px;
-          padding: 16px;
-          background: var(--secondary-background-color);
-          border-radius: 8px;
-          width: 100%;
-          overflow: hidden;
+          margin-bottom: 20px;
         }
         .section-title {
           font-size: 14px;
-          font-weight: 600;
+          font-weight: 500;
           color: var(--primary-text-color);
-          margin-bottom: 16px;
+          margin-bottom: 8px;
         }
         .hint {
           font-size: 12px;
           color: var(--secondary-text-color);
-          margin-bottom: 12px;
-          padding: 8px;
-          background: var(--card-background-color);
-          border-radius: 4px;
-          border-left: 3px solid var(--primary-color);
+          margin-bottom: 8px;
         }
         .scene-row {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          margin-bottom: 12px;
-          padding: 12px;
-          background: var(--card-background-color);
-          border-radius: 6px;
-          width: 100%;
+          display: grid;
+          grid-template-columns: 2fr 1.3fr 1fr auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
         }
         .check-row {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          margin-bottom: 16px;
-          padding: 12px;
-          background: var(--card-background-color);
-          border-radius: 6px;
-          border-left: 3px solid var(--primary-color);
-          width: 100%;
-        }
-        .field {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          width: 100%;
-        }
-        .field-label {
-          font-size: 12px;
-          font-weight: 500;
-          color: var(--secondary-text-color);
-        }
-        .text-input {
-          width: 100%;
-          box-sizing: border-box;
-          border: 1px solid var(--divider-color);
-          border-radius: 8px;
-          background: var(--primary-background-color, var(--card-background-color));
-          color: var(--primary-text-color);
-          font-family: inherit;
-          font-size: 14px;
-          padding: 10px 12px;
-        }
-        .text-input:focus {
-          outline: none;
-          border-color: var(--primary-color);
-        }
-        .check-row-buttons {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1.6fr 1.1fr 1fr auto auto;
           gap: 8px;
-          justify-content: flex-end;
+          align-items: center;
+          margin-bottom: 8px;
         }
 
         .remove-btn, .add-btn {
@@ -153,59 +100,30 @@ class RoborockStatusCardEditor extends HTMLElement {
           background: var(--card-background-color);
           color: var(--primary-text-color);
           cursor: pointer;
-          padding: 8px 12px;
+          padding: 8px;
           font-size: 13px;
-          transition: all 0.2s ease;
         }
         .remove-btn {
+          padding: 8px 10px;
           color: var(--error-color, #db4437);
         }
-        .remove-btn:hover {
-          background: var(--error-color, #db4437);
-          color: white;
-        }
         .use-current-btn {
-          padding: 8px 12px;
+          padding: 8px 10px;
           color: var(--primary-color);
-          border: 1px solid var(--divider-color);
-          border-radius: 8px;
-          background: var(--card-background-color);
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        .use-current-btn:hover {
-          background: var(--primary-color);
-          color: white;
         }
         .add-btn {
           width: 100%;
-          margin-top: 8px;
-          background: var(--primary-color);
-          color: white;
-          border: none;
-        }
-        .add-btn:hover {
-          opacity: 0.9;
+          margin-top: 4px;
         }
         .ok-select {
-          min-height: 40px;
+          height: 36px;
           border: 1px solid var(--divider-color);
           border-radius: 8px;
           background: var(--card-background-color);
           color: var(--primary-text-color);
           font-size: 13px;
-          padding: 8px 12px;
+          padding: 0 8px;
           width: 100%;
-          max-width: 100%;
-          box-sizing: border-box;
-        }
-        ha-entity-picker {
-          width: 100%;
-          min-width: 0;
-        }
-        ha-icon-picker {
-          width: 100%;
-          min-width: 0;
         }
       </style>
       <div class="section">
@@ -216,6 +134,14 @@ class RoborockStatusCardEditor extends HTMLElement {
         <div id="scenes"></div>
         <button class="add-btn" id="add-scene">
           <ha-icon icon="mdi:plus"></ha-icon><span>Ajouter un bouton</span>
+        </button>
+      </div>
+      <div class="section">
+        <div class="section-title">Pièces (nettoyage personnalisé)</div>
+        <div class="hint">L'identifiant correspond au numéro de segment utilisé par ton intégration Roborock (visible dans les outils de développement ou l'appli Roborock).</div>
+        <div id="rooms"></div>
+        <button class="add-btn" id="add-room">
+          <ha-icon icon="mdi:plus"></ha-icon><span>Ajouter une pièce</span>
         </button>
       </div>
       <div class="section">
@@ -239,6 +165,7 @@ class RoborockStatusCardEditor extends HTMLElement {
     });
 
     this._renderScenes();
+    this._renderRooms();
     this._renderChecks();
 
     this.shadowRoot.getElementById("add-scene").addEventListener("click", () => {
@@ -247,31 +174,17 @@ class RoborockStatusCardEditor extends HTMLElement {
       this._renderScenes();
     });
 
+    this.shadowRoot.getElementById("add-room").addEventListener("click", () => {
+      const rooms = [...(this._config.rooms || []), { id: "", name: "", icon: "mdi:floor-plan" }];
+      this._emitChange({ ...this._config, rooms });
+      this._renderRooms();
+    });
+
     this.shadowRoot.getElementById("add-check").addEventListener("click", () => {
-      const error_checks = [...(this._config.error_checks || []), { entity: "", ok_state: "OK", name: "", error_message: "" }];
+      const error_checks = [...(this._config.error_checks || []), { entity: "", ok_state: "OK", name: "" }];
       this._emitChange({ ...this._config, error_checks });
       this._renderChecks();
     });
-  }
-
-  _labeledField(labelText, controlEl) {
-    const wrap = document.createElement("div");
-    wrap.className = "field";
-    const label = document.createElement("label");
-    label.className = "field-label";
-    label.textContent = labelText;
-    wrap.appendChild(label);
-    wrap.appendChild(controlEl);
-    return wrap;
-  }
-
-  _createTextInput(value, placeholder) {
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "text-input";
-    input.value = value || "";
-    if (placeholder) input.placeholder = placeholder;
-    return input;
   }
 
   _renderScenes() {
@@ -292,7 +205,9 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._patchScene(index, { entity: ev.detail.value || "" });
       });
 
-      const nameField = this._createTextInput(scene.name, "Ex : Nettoyer le salon");
+      const nameField = document.createElement("ha-textfield");
+      nameField.label = "Nom";
+      nameField.value = scene.name || "";
       nameField.addEventListener("change", (ev) => {
         this._patchScene(index, { name: ev.target.value });
       });
@@ -308,7 +223,7 @@ class RoborockStatusCardEditor extends HTMLElement {
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon><span>Supprimer</span>';
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
       removeBtn.addEventListener("click", () => {
         const scenes = [...this._config.scenes];
         scenes.splice(index, 1);
@@ -317,7 +232,7 @@ class RoborockStatusCardEditor extends HTMLElement {
       });
 
       row.appendChild(picker);
-      row.appendChild(this._labeledField("Nom", nameField));
+      row.appendChild(nameField);
       row.appendChild(iconPicker);
       row.appendChild(removeBtn);
       container.appendChild(row);
@@ -328,6 +243,61 @@ class RoborockStatusCardEditor extends HTMLElement {
     const scenes = [...this._config.scenes];
     scenes[index] = { ...scenes[index], ...patch };
     this._emitChange({ ...this._config, scenes });
+  }
+
+  _renderRooms() {
+    const container = this.shadowRoot.getElementById("rooms");
+    container.innerHTML = "";
+
+    (this._config.rooms || []).forEach((room, index) => {
+      const row = document.createElement("div");
+      row.className = "scene-row";
+
+      const idField = document.createElement("ha-textfield");
+      idField.label = "Identifiant (segment)";
+      idField.value = room.id != null ? String(room.id) : "";
+      idField.addEventListener("change", (ev) => {
+        this._patchRoom(index, { id: ev.target.value });
+      });
+
+      const nameField = document.createElement("ha-textfield");
+      nameField.label = "Nom";
+      nameField.value = room.name || "";
+      nameField.addEventListener("change", (ev) => {
+        this._patchRoom(index, { name: ev.target.value });
+      });
+
+      const iconPicker = document.createElement("ha-icon-picker");
+      iconPicker.hass = this._hass;
+      iconPicker.label = "Icône";
+      iconPicker.value = room.icon || "";
+      iconPicker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._patchRoom(index, { icon: ev.detail.value || "" });
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "remove-btn";
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
+      removeBtn.addEventListener("click", () => {
+        const rooms = [...this._config.rooms];
+        rooms.splice(index, 1);
+        this._emitChange({ ...this._config, rooms });
+        this._renderRooms();
+      });
+
+      row.appendChild(idField);
+      row.appendChild(nameField);
+      row.appendChild(iconPicker);
+      row.appendChild(removeBtn);
+      container.appendChild(row);
+    });
+  }
+
+  _patchRoom(index, patch) {
+    const rooms = [...this._config.rooms];
+    rooms[index] = { ...rooms[index], ...patch };
+    this._emitChange({ ...this._config, rooms });
   }
 
   _renderChecks() {
@@ -348,43 +318,18 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._renderChecks();
       });
 
-      const nameField = this._createTextInput(check.name, "Ex : Erreur du dock");
+      const nameField = document.createElement("ha-textfield");
+      nameField.label = "Libellé";
+      nameField.value = check.name || "";
       nameField.addEventListener("change", (ev) => {
         this._patchCheck(index, { name: ev.target.value });
       });
 
-      const currentState = check.entity && this._hass ? this._hass.states[check.entity] : null;
-      const options = new Set();
-      if (check.ok_state) options.add(check.ok_state);
-      if (currentState) options.add(currentState.state);
-      if (check.entity && check.entity.startsWith("binary_sensor.")) {
-        options.add("on");
-        options.add("off");
-      }
-      ["OK", "Aucun", "Problème", "Erreur", "Attaché", "Détaché"].forEach((o) => options.add(o));
-
-      const okSelect = document.createElement("select");
-      okSelect.className = "ok-select";
-      okSelect.title = "État normal";
-      const placeholder = document.createElement("option");
-      placeholder.value = "";
-      placeholder.textContent = "État normal…";
-      placeholder.disabled = true;
-      okSelect.appendChild(placeholder);
-      options.forEach((opt) => {
-        const optionEl = document.createElement("option");
-        optionEl.value = opt;
-        optionEl.textContent = opt;
-        okSelect.appendChild(optionEl);
-      });
-      okSelect.value = check.ok_state || "";
-      okSelect.addEventListener("change", (ev) => {
+      const okField = document.createElement("ha-textfield");
+      okField.label = "État normal";
+      okField.value = check.ok_state || "";
+      okField.addEventListener("change", (ev) => {
         this._patchCheck(index, { ok_state: ev.target.value });
-      });
-
-      const errorMessageField = this._createTextInput(check.error_message, "Ex : Le réservoir d'eau sale est plein");
-      errorMessageField.addEventListener("change", (ev) => {
-        this._patchCheck(index, { error_message: ev.target.value });
       });
 
       const useCurrentBtn = document.createElement("button");
@@ -392,14 +337,15 @@ class RoborockStatusCardEditor extends HTMLElement {
       useCurrentBtn.title = "Utiliser l'état actuel comme état normal";
       useCurrentBtn.innerHTML = '<ha-icon icon="mdi:target"></ha-icon>';
       useCurrentBtn.addEventListener("click", () => {
+        const currentState = check.entity && this._hass ? this._hass.states[check.entity] : null;
         if (!currentState) return;
+        okField.value = currentState.state;
         this._patchCheck(index, { ok_state: currentState.state });
-        this._renderChecks();
       });
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon><span>Supprimer cette vérification</span>';
+      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
       removeBtn.addEventListener("click", () => {
         const error_checks = [...this._config.error_checks];
         error_checks.splice(index, 1);
@@ -407,21 +353,11 @@ class RoborockStatusCardEditor extends HTMLElement {
         this._renderChecks();
       });
 
-      // Disposition en colonne unique : chaque champ est étiqueté et pleine largeur,
-      // ce qui évite que les champs se retrouvent écrasés/invisibles sur un panneau étroit.
-      const okSelectWrap = this._labeledField("État normal", okSelect);
-      okSelectWrap.appendChild(useCurrentBtn);
-      useCurrentBtn.style.marginTop = "4px";
-
-      const buttonsDiv = document.createElement("div");
-      buttonsDiv.className = "check-row-buttons";
-      buttonsDiv.appendChild(removeBtn);
-
       row.appendChild(picker);
-      row.appendChild(this._labeledField("Libellé", nameField));
-      row.appendChild(okSelectWrap);
-      row.appendChild(this._labeledField("Message d'erreur", errorMessageField));
-      row.appendChild(buttonsDiv);
+      row.appendChild(nameField);
+      row.appendChild(okField);
+      row.appendChild(useCurrentBtn);
+      row.appendChild(removeBtn);
       container.appendChild(row);
     });
   }
@@ -436,6 +372,12 @@ class RoborockStatusCardEditor extends HTMLElement {
 customElements.define("roborock-status-card-editor", RoborockStatusCardEditor);
 
 class RoborockStatusCard extends HTMLElement {
+
+  constructor() {
+    super();
+    this._selectedRooms = new Set();
+    this._panelOpen = false;
+  }
 
   static getConfigElement() {
     return document.createElement("roborock-status-card-editor");
@@ -464,20 +406,18 @@ class RoborockStatusCard extends HTMLElement {
     const vacuumEntity = Object.keys(hass.states).find((id) => id.startsWith("vacuum."));
     return {
       entity: vacuumEntity || "vacuum.nestor_ii",
-      battery_entity: "",
       duration_entity: "",
-      progress_entity: "",
       room_entity: "",
       last_clean_entity: "",
       scenes: [],
       error_checks: [
-        { entity: "", ok_state: "OK", name: "Erreur du dock", error_message: "" },
-        { entity: "", ok_state: "OK", name: "Réservoir d'eau sale", error_message: "" },
-        { entity: "", ok_state: "OK", name: "Réservoir d'eau propre", error_message: "" },
-        { entity: "", ok_state: "Aucun", name: "Erreur de l'aspirateur", error_message: "" },
-        { entity: "", ok_state: "OK", name: "Pénurie d'eau", error_message: "" },
-        { entity: "", ok_state: "Attaché", name: "Réservoir d'eau fixé", error_message: "" },
-        { entity: "", ok_state: "Attachée", name: "Serpillière fixée", error_message: "" }
+        { entity: "", ok_state: "OK", name: "Erreur du dock" },
+        { entity: "", ok_state: "OK", name: "Réservoir d'eau sale" },
+        { entity: "", ok_state: "OK", name: "Réservoir d'eau propre" },
+        { entity: "", ok_state: "Aucun", name: "Erreur de l'aspirateur" },
+        { entity: "", ok_state: "OK", name: "Pénurie d'eau" },
+        { entity: "", ok_state: "Attaché", name: "Réservoir d'eau fixé" },
+        { entity: "", ok_state: "Attachée", name: "Serpillière fixée" }
       ]
     };
   }
@@ -487,9 +427,9 @@ class RoborockStatusCard extends HTMLElement {
     return this._hass.states[entityId] || null;
   }
 
-  _callService(domain, service, entityId) {
+  _callService(domain, service, entityId, extraData) {
     if (!entityId) return;
-    this._hass.callService(domain, service, { entity_id: entityId });
+    this._hass.callService(domain, service, { entity_id: entityId, ...(extraData || {}) });
   }
 
   _renderPill(label, entityId, formatter) {
@@ -503,38 +443,11 @@ class RoborockStatusCard extends HTMLElement {
     `;
   }
 
-  _renderDurationProgressPill() {
-    const durationSt = this._state(this._config.duration_entity);
-    const progressSt = this._state(this._config.progress_entity);
-
-    let value = "—";
-    if (durationSt && progressSt) {
-      value = `${this._formatDuration(durationSt)} (${this._formatPercentage(progressSt)})`;
-    } else if (durationSt) {
-      value = this._formatDuration(durationSt);
-    } else if (progressSt) {
-      value = this._formatPercentage(progressSt);
-    }
-
-    return `
-      <div class="pill">
-        <div class="pill-label">Durée</div>
-        <div class="pill-value">${value}</div>
-      </div>
-    `;
-  }
-
   _formatDuration(st) {
     const num = parseFloat(st.state);
     if (isNaN(num)) return st.state;
     const unit = st.attributes.unit_of_measurement || "min";
     return `${Math.round(num)} ${unit}`;
-  }
-
-  _formatPercentage(st) {
-    const num = parseFloat(st.state);
-    if (isNaN(num)) return st.state;
-    return `${Math.round(num)}%`;
   }
 
   _formatTimestamp(st) {
@@ -551,58 +464,19 @@ class RoborockStatusCard extends HTMLElement {
     return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
-  _getBatteryPercentage() {
-    if (this._config.battery_entity) {
-      const batteryState = this._state(this._config.battery_entity);
-      if (batteryState) {
-        const percentage = parseFloat(batteryState.state);
-        if (!isNaN(percentage)) return percentage;
-      }
-    }
-    // Repli sur l'attribut battery_level du vacuum si pas de capteur dédié
-    // (ou si le capteur configuré n'a pas encore d'état valide)
-    const vacuum = this._state(this._config.entity);
-    if (vacuum && vacuum.attributes.battery_level != null) {
-      return vacuum.attributes.battery_level;
-    }
-    return null;
-  }
-
-  _getBatteryIcon() {
-    const percentage = this._getBatteryPercentage();
-    if (percentage === null) return "mdi:battery-unknown";
-
-    const vacuum = this._state(this._config.entity);
-    // Le robot est considéré "en charge" quand il est retourné au dock
-    // et que la batterie n'est pas encore pleine.
-    const isCharging = !!vacuum && vacuum.state === "docked" && percentage < 100;
-
-    // Palier par tranche de 10% pour un rendu vraiment progressif
-    const step = Math.min(100, Math.max(0, Math.round(percentage / 10) * 10));
-
-    if (isCharging) {
-      if (step <= 0) return "mdi:battery-charging-outline";
-      if (step >= 100) return "mdi:battery-charging";
-      return `mdi:battery-charging-${step}`;
-    }
-
-    if (step <= 10) return "mdi:battery-alert";
-    if (step >= 100) return "mdi:battery";
-    return `mdi:battery-${step}`;
-  }
-
   _renderErrorChecks() {
     const checks = this._config.error_checks || [];
+    const normalize = (s) => String(s).trim().toLowerCase();
     const alerts = checks
       .map((check) => {
         const st = this._state(check.entity);
-        if (!st || check.ok_state == null) return null;
-        if (st.state === check.ok_state) return null;
+        if (!st || !check.ok_state) return null;
+        if (normalize(st.state) === normalize(check.ok_state)) return null;
         const label = check.error_message || check.name || st.attributes.friendly_name || check.entity;
         return `
           <div class="warning">
             <ha-icon icon="mdi:alert"></ha-icon>
-            <span>${label} : ${st.state}</span>
+            <span>${label}</span>
           </div>
         `;
       })
@@ -622,33 +496,72 @@ class RoborockStatusCard extends HTMLElement {
     return `<div class="scenes">${buttons}</div>`;
   }
 
+  _renderOptionSelect(label, entityId, cssMarker) {
+    const st = this._state(entityId);
+    if (!st || !st.attributes.options) return "";
+    const options = st.attributes.options;
+    return `
+      <div class="select-row">
+        <div class="select-label">${label}</div>
+        <select class="native-select" data-select-entity="${entityId}" data-select-kind="${cssMarker}">
+          ${options.map((o) => `<option value="${o}" ${o === st.state ? "selected" : ""}>${o}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+
+  _renderFanSpeedSelect(vacuum) {
+    if (!vacuum || !vacuum.attributes.fan_speed_list) return "";
+    const options = vacuum.attributes.fan_speed_list;
+    const current = vacuum.attributes.fan_speed;
+    return `
+      <div class="select-row">
+        <div class="select-label">Puissance d'aspiration</div>
+        <select class="native-select" data-fan-select="1">
+          ${options.map((o) => `<option value="${o}" ${o === current ? "selected" : ""}>${o}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+
+  _renderCustomPanel(vacuum) {
+    const rooms = this._config.rooms || [];
+    const modeSelect = this._renderOptionSelect("Mode de nettoyage", this._config.mode_entity, "mode");
+    const mopSelect = this._renderOptionSelect("Intensité de frottement", this._config.mop_intensity_entity, "mop");
+    const fanSelect = this._renderFanSpeedSelect(vacuum);
+
+    const chips = rooms.map((r) => `
+      <button class="room-chip ${this._selectedRooms.has(String(r.id)) ? "selected" : ""}" data-room-id="${r.id}">
+        <ha-icon icon="${r.icon || "mdi:floor-plan"}"></ha-icon>
+        <span>${r.name || r.id}</span>
+      </button>
+    `).join("");
+
+    return `
+      <div class="custom-panel">
+        ${rooms.length ? `<div class="rooms-chips">${chips}</div>` : `<div class="hint">Aucune pièce configurée pour le moment.</div>`}
+        ${modeSelect}
+        ${mopSelect}
+        ${fanSelect}
+        <button class="action-btn primary" id="clean-rooms" ${this._selectedRooms.size === 0 ? "disabled" : ""}>
+          <ha-icon icon="mdi:play"></ha-icon>
+          <span>Nettoyer la sélection</span>
+        </button>
+      </div>
+    `;
+  }
+
   _render() {
     if (!this._config || !this._hass) return;
 
     const vacuum = this._state(this._config.entity);
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
     const stateText = vacuum ? vacuum.state : "indisponible";
-
-    // Obtenir le pourcentage de batterie une seule fois
-    const batteryPercentage = this._getBatteryPercentage();
-    let battery = "—";
-    if (batteryPercentage !== null) {
-      battery = `${batteryPercentage}%`;
-    }
-
+    const battery = vacuum && vacuum.attributes.battery_level != null ? `${vacuum.attributes.battery_level}%` : "—";
     const isCleaning = vacuum && vacuum.state === "cleaning";
-    const batteryIcon = this._getBatteryIcon();
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host {
-          display: block;
-          width: 100%;
-          box-sizing: border-box;
-        }
-        *, *::before, *::after {
-          box-sizing: border-box;
-        }
         ha-card {
           padding: 16px;
         }
@@ -662,22 +575,15 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 10px;
-          min-width: 0;
         }
         .name-row ha-icon {
           --mdc-icon-size: 24px;
           color: var(--primary-color);
         }
-        .titles {
-          min-width: 0;
-        }
         .titles .name {
           font-size: 15px;
           font-weight: 500;
           color: var(--primary-text-color);
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
         }
         .titles .state {
           font-size: 12px;
@@ -690,14 +596,10 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 4px;
-          flex-shrink: 0;
-        }
-        .battery ha-icon {
-          --mdc-icon-size: 20px;
         }
         .grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+          grid-template-columns: repeat(3, 1fr);
           gap: 8px;
           margin-bottom: 12px;
         }
@@ -706,7 +608,6 @@ class RoborockStatusCard extends HTMLElement {
           border-radius: 8px;
           padding: 8px 6px;
           text-align: center;
-          min-width: 0;
         }
         .pill-label {
           font-size: 11px;
@@ -717,9 +618,6 @@ class RoborockStatusCard extends HTMLElement {
           font-size: 13px;
           font-weight: 500;
           color: var(--primary-text-color);
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
         }
         .warning {
           display: flex;
@@ -734,11 +632,10 @@ class RoborockStatusCard extends HTMLElement {
         }
         .warning ha-icon {
           --mdc-icon-size: 16px;
-          flex-shrink: 0;
         }
         .scenes {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          grid-template-columns: repeat(2, 1fr);
           gap: 8px;
           margin-bottom: 12px;
         }
@@ -754,7 +651,6 @@ class RoborockStatusCard extends HTMLElement {
           background: var(--card-background-color);
           color: var(--primary-text-color);
           cursor: pointer;
-          min-width: 0;
         }
         .scene-btn:active, .action-btn:active {
           opacity: 0.7;
@@ -763,10 +659,6 @@ class RoborockStatusCard extends HTMLElement {
           display: flex;
           gap: 8px;
         }
-        .action-btn {
-          flex: 1;
-          min-width: 0;
-        }
         .action-btn.primary {
           background: var(--primary-color);
           color: var(--text-primary-color, #fff);
@@ -774,7 +666,68 @@ class RoborockStatusCard extends HTMLElement {
         }
         .action-btn ha-icon, .scene-btn ha-icon {
           --mdc-icon-size: 16px;
-          flex-shrink: 0;
+        }
+        .action-btn.icon-only {
+          flex: 0 0 auto;
+          width: 40px;
+        }
+        .action-btn[disabled] {
+          opacity: 0.5;
+          cursor: default;
+        }
+        .custom-panel {
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 0.5px solid var(--divider-color);
+        }
+        .hint {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+          margin-bottom: 8px;
+        }
+        .rooms-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .room-chip {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+        }
+        .room-chip.selected {
+          background: var(--primary-color);
+          color: var(--text-primary-color, #fff);
+          border-color: var(--primary-color);
+        }
+        .room-chip ha-icon {
+          --mdc-icon-size: 15px;
+        }
+        .select-row {
+          margin-bottom: 10px;
+        }
+        .select-label {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+          margin-bottom: 4px;
+        }
+        .native-select {
+          width: 100%;
+          height: 36px;
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-size: 13px;
+          padding: 0 8px;
         }
       </style>
       <ha-card>
@@ -787,12 +740,12 @@ class RoborockStatusCard extends HTMLElement {
             </div>
           </div>
           <div class="battery">
-            <ha-icon icon="${batteryIcon}"></ha-icon>${battery}
+            <ha-icon icon="mdi:battery"></ha-icon>${battery}
           </div>
         </div>
 
         <div class="grid">
-          ${this._renderDurationProgressPill()}
+          ${this._renderPill("Durée", this._config.duration_entity, (st) => this._formatDuration(st))}
           ${this._renderPill("Pièce", this._config.room_entity)}
           ${this._renderPill("Dernier passage", this._config.last_clean_entity, (st) => this._formatTimestamp(st))}
         </div>
@@ -810,7 +763,12 @@ class RoborockStatusCard extends HTMLElement {
             <ha-icon icon="mdi:home"></ha-icon>
             <span>Retour base</span>
           </button>
+          <button class="action-btn icon-only" id="toggle-panel" title="Nettoyage personnalisé">
+            <ha-icon icon="mdi:tune"></ha-icon>
+          </button>
         </div>
+
+        ${this._panelOpen ? this._renderCustomPanel(vacuum) : ""}
       </ha-card>
     `;
 
@@ -828,6 +786,50 @@ class RoborockStatusCard extends HTMLElement {
     this.shadowRoot.getElementById("dock").addEventListener("click", () => {
       this._callService("vacuum", "return_to_base", this._config.entity);
     });
+
+    this.shadowRoot.getElementById("toggle-panel").addEventListener("click", () => {
+      this._panelOpen = !this._panelOpen;
+      this._render();
+    });
+
+    if (this._panelOpen) {
+      this.shadowRoot.querySelectorAll(".room-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const roomId = chip.dataset.roomId;
+          if (this._selectedRooms.has(roomId)) {
+            this._selectedRooms.delete(roomId);
+          } else {
+            this._selectedRooms.add(roomId);
+          }
+          this._render();
+        });
+      });
+
+      this.shadowRoot.querySelectorAll("select[data-select-entity]").forEach((sel) => {
+        sel.addEventListener("change", (ev) => {
+          this._callService("select", "select_option", sel.dataset.selectEntity, { option: ev.target.value });
+        });
+      });
+
+      const fanSelect = this.shadowRoot.querySelector("select[data-fan-select]");
+      if (fanSelect) {
+        fanSelect.addEventListener("change", (ev) => {
+          this._callService("vacuum", "set_fan_speed", this._config.entity, { fan_speed: ev.target.value });
+        });
+      }
+
+      const cleanRoomsBtn = this.shadowRoot.getElementById("clean-rooms");
+      if (cleanRoomsBtn) {
+        cleanRoomsBtn.addEventListener("click", () => {
+          if (this._selectedRooms.size === 0) return;
+          const segments = [...this._selectedRooms].map((id) => (isNaN(Number(id)) ? id : Number(id)));
+          this._callService("vacuum", "send_command", this._config.entity, {
+            command: this._config.room_clean_command || "app_segment_clean",
+            params: [{ segments, repeat: 1 }]
+          });
+        });
+      }
+    }
   }
 }
 
