@@ -759,7 +759,7 @@ class RoborockStatusCard extends HTMLElement {
         cleanRoomsBtn.addEventListener("click", () => {
           if (this._selectedAreas.size === 0) return;
           this._callService("vacuum", "clean_area", this._config.entity, {
-            area_id: [...this._selectedAreas]
+            cleaning_area_id: [...this._selectedAreas]
           });
         });
       }
