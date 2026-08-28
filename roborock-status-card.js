@@ -1,6 +1,7 @@
 const EDITOR_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "vacuum" } } },
   { name: "name", selector: { text: {} } },
+  { name: "status_entity", selector: { entity: { domain: "sensor" } } },
   { name: "duration_entity", selector: { entity: { domain: "sensor" } } },
   { name: "room_entity", selector: { entity: { domain: "sensor" } } },
   { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } },
@@ -12,6 +13,7 @@ const EDITOR_SCHEMA = [
 const EDITOR_LABELS = {
   entity: "Entité vacuum (obligatoire)",
   name: "Nom affiché",
+  status_entity: "Capteur : état détaillé (optionnel — remplace l'état générique, capte les phases comme le lavage de serpillière)",
   duration_entity: "Capteur : durée du dernier nettoyage",
   room_entity: "Capteur : pièce actuelle",
   last_clean_entity: "Capteur : fin du dernier nettoyage",
@@ -307,6 +309,7 @@ class RoborockStatusCard extends HTMLElement {
     super();
     this._selectedAreas = new Set();
     this._panelOpen = false;
+    this._lastScene = null;
   }
 
   static getConfigElement() {
@@ -394,6 +397,15 @@ class RoborockStatusCard extends HTMLElement {
     return labels[st.state] || (st.state.charAt(0).toUpperCase() + st.state.slice(1));
   }
 
+  _currentStatusText(vacuum) {
+    const statusEntity = this._config.status_entity;
+    if (statusEntity) {
+      const st = this._state(statusEntity);
+      if (st) return st.state;
+    }
+    return vacuum ? this._formatVacuumState(vacuum) : "indisponible";
+  }
+
   _formatTimestamp(st) {
     const date = new Date(st.state);
     if (isNaN(date.getTime())) return st.state;
@@ -432,7 +444,7 @@ class RoborockStatusCard extends HTMLElement {
     const scenes = this._config.scenes || [];
     if (!scenes.length) return "";
     const buttons = scenes.map((s, i) => `
-      <button class="scene-btn" data-index="${i}">
+      <button class="scene-btn ${this._lastScene === i ? "selected" : ""}" data-index="${i}">
         <ha-icon icon="${s.icon || "mdi:play"}"></ha-icon>
         <span>${s.name || s.entity}</span>
       </button>
@@ -505,7 +517,7 @@ class RoborockStatusCard extends HTMLElement {
 
     const vacuum = this._state(this._config.entity);
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
-    const stateText = vacuum ? vacuum.state : "indisponible";
+    const stateText = this._currentStatusText(vacuum);
     const battery = vacuum && vacuum.attributes.battery_level != null ? `${vacuum.attributes.battery_level}%` : "—";
     const inactiveStates = ["docked", "idle", "paused", "error"];
     const isActiveCycle = vacuum && !inactiveStates.includes(vacuum.state);
@@ -605,6 +617,11 @@ class RoborockStatusCard extends HTMLElement {
         .scene-btn:active, .action-btn:active {
           opacity: 0.7;
         }
+        .scene-btn.selected {
+          background: var(--primary-color);
+          color: var(--text-primary-color, #fff);
+          border-color: var(--primary-color);
+        }
         .actions {
           display: flex;
           gap: 8px;
@@ -702,7 +719,10 @@ class RoborockStatusCard extends HTMLElement {
         <div class="grid">
           ${this._renderPill("Durée", this._config.duration_entity, (st) => this._formatDuration(st))}
           ${this._renderPill("Pièce", this._config.room_entity)}
-          ${this._renderPill("État", this._config.entity, (st) => this._formatVacuumState(st))}
+          <div class="pill">
+            <div class="pill-label">État</div>
+            <div class="pill-value">${stateText}</div>
+          </div>
         </div>
 
         ${this._renderErrorChecks()}
@@ -734,8 +754,12 @@ class RoborockStatusCard extends HTMLElement {
 
     this.shadowRoot.querySelectorAll(".scene-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const scene = this._config.scenes[btn.dataset.index];
+        const index = Number(btn.dataset.index);
+        const scene = this._config.scenes[index];
         this._callService("button", "press", scene.entity);
+        this._lastScene = index;
+        this.shadowRoot.querySelectorAll(".scene-btn").forEach((b) => b.classList.remove("selected"));
+        btn.classList.add("selected");
       });
     });
 
