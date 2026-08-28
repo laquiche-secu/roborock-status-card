@@ -6,7 +6,7 @@ const EDITOR_SCHEMA = [
   { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } },
   { name: "mode_entity", selector: { entity: { domain: "select" } } },
   { name: "mop_intensity_entity", selector: { entity: { domain: "select" } } },
-  { name: "room_clean_command", selector: { text: {} } }
+  { name: "areas", selector: { area: { multiple: true } } }
 ];
 
 const EDITOR_LABELS = {
@@ -17,13 +17,13 @@ const EDITOR_LABELS = {
   last_clean_entity: "Capteur : fin du dernier nettoyage",
   mode_entity: "Sélecteur : mode de nettoyage",
   mop_intensity_entity: "Sélecteur : intensité de frottement",
-  room_clean_command: "Commande vacuum.send_command pour nettoyer des pièces (défaut : app_segment_clean)"
+  areas: "Pièces proposées au nettoyage personnalisé (nécessite d'avoir mappé les segments du robot vers ces pièces dans les paramètres de l'entité)"
 };
 
 class RoborockStatusCardEditor extends HTMLElement {
 
   setConfig(config) {
-    this._config = { scenes: [], error_checks: [], rooms: [], ...config };
+    this._config = { scenes: [], error_checks: [], areas: [], ...config };
     this._render();
   }
 
@@ -137,14 +137,6 @@ class RoborockStatusCardEditor extends HTMLElement {
         </button>
       </div>
       <div class="section">
-        <div class="section-title">Pièces (nettoyage personnalisé)</div>
-        <div class="hint">L'identifiant correspond au numéro de segment utilisé par ton intégration Roborock (visible dans les outils de développement ou l'appli Roborock).</div>
-        <div id="rooms"></div>
-        <button class="add-btn" id="add-room">
-          <ha-icon icon="mdi:plus"></ha-icon><span>Ajouter une pièce</span>
-        </button>
-      </div>
-      <div class="section">
         <div class="section-title">Vérifications d'erreur</div>
         <div class="hint">Un message n'apparaît sur la carte que si l'état du capteur diffère de l'état "normal" indiqué.</div>
         <div id="checks"></div>
@@ -165,19 +157,12 @@ class RoborockStatusCardEditor extends HTMLElement {
     });
 
     this._renderScenes();
-    this._renderRooms();
     this._renderChecks();
 
     this.shadowRoot.getElementById("add-scene").addEventListener("click", () => {
       const scenes = [...(this._config.scenes || []), { entity: "", name: "", icon: "mdi:play" }];
       this._emitChange({ ...this._config, scenes });
       this._renderScenes();
-    });
-
-    this.shadowRoot.getElementById("add-room").addEventListener("click", () => {
-      const rooms = [...(this._config.rooms || []), { id: "", name: "", icon: "mdi:floor-plan" }];
-      this._emitChange({ ...this._config, rooms });
-      this._renderRooms();
     });
 
     this.shadowRoot.getElementById("add-check").addEventListener("click", () => {
@@ -243,61 +228,6 @@ class RoborockStatusCardEditor extends HTMLElement {
     const scenes = [...this._config.scenes];
     scenes[index] = { ...scenes[index], ...patch };
     this._emitChange({ ...this._config, scenes });
-  }
-
-  _renderRooms() {
-    const container = this.shadowRoot.getElementById("rooms");
-    container.innerHTML = "";
-
-    (this._config.rooms || []).forEach((room, index) => {
-      const row = document.createElement("div");
-      row.className = "scene-row";
-
-      const idField = document.createElement("ha-textfield");
-      idField.label = "Identifiant (segment)";
-      idField.value = room.id != null ? String(room.id) : "";
-      idField.addEventListener("change", (ev) => {
-        this._patchRoom(index, { id: ev.target.value });
-      });
-
-      const nameField = document.createElement("ha-textfield");
-      nameField.label = "Nom";
-      nameField.value = room.name || "";
-      nameField.addEventListener("change", (ev) => {
-        this._patchRoom(index, { name: ev.target.value });
-      });
-
-      const iconPicker = document.createElement("ha-icon-picker");
-      iconPicker.hass = this._hass;
-      iconPicker.label = "Icône";
-      iconPicker.value = room.icon || "";
-      iconPicker.addEventListener("value-changed", (ev) => {
-        ev.stopPropagation();
-        this._patchRoom(index, { icon: ev.detail.value || "" });
-      });
-
-      const removeBtn = document.createElement("button");
-      removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>';
-      removeBtn.addEventListener("click", () => {
-        const rooms = [...this._config.rooms];
-        rooms.splice(index, 1);
-        this._emitChange({ ...this._config, rooms });
-        this._renderRooms();
-      });
-
-      row.appendChild(idField);
-      row.appendChild(nameField);
-      row.appendChild(iconPicker);
-      row.appendChild(removeBtn);
-      container.appendChild(row);
-    });
-  }
-
-  _patchRoom(index, patch) {
-    const rooms = [...this._config.rooms];
-    rooms[index] = { ...rooms[index], ...patch };
-    this._emitChange({ ...this._config, rooms });
   }
 
   _renderChecks() {
@@ -375,7 +305,7 @@ class RoborockStatusCard extends HTMLElement {
 
   constructor() {
     super();
-    this._selectedRooms = new Set();
+    this._selectedAreas = new Set();
     this._panelOpen = false;
   }
 
@@ -410,6 +340,7 @@ class RoborockStatusCard extends HTMLElement {
       room_entity: "",
       last_clean_entity: "",
       scenes: [],
+      areas: [],
       error_checks: [
         { entity: "", ok_state: "OK", name: "Erreur du dock" },
         { entity: "", ok_state: "OK", name: "Réservoir d'eau sale" },
@@ -525,25 +456,30 @@ class RoborockStatusCard extends HTMLElement {
   }
 
   _renderCustomPanel(vacuum) {
-    const rooms = this._config.rooms || [];
+    const areaIds = this._config.areas || [];
     const modeSelect = this._renderOptionSelect("Mode de nettoyage", this._config.mode_entity, "mode");
     const mopSelect = this._renderOptionSelect("Intensité de frottement", this._config.mop_intensity_entity, "mop");
     const fanSelect = this._renderFanSpeedSelect(vacuum);
 
-    const chips = rooms.map((r) => `
-      <button class="room-chip ${this._selectedRooms.has(String(r.id)) ? "selected" : ""}" data-room-id="${r.id}">
-        <ha-icon icon="${r.icon || "mdi:floor-plan"}"></ha-icon>
-        <span>${r.name || r.id}</span>
-      </button>
-    `).join("");
+    const chips = areaIds.map((areaId) => {
+      const area = this._hass.areas ? this._hass.areas[areaId] : null;
+      const label = area ? area.name : areaId;
+      const icon = (area && area.icon) || "mdi:floor-plan";
+      return `
+        <button class="room-chip ${this._selectedAreas.has(areaId) ? "selected" : ""}" data-area-id="${areaId}">
+          <ha-icon icon="${icon}"></ha-icon>
+          <span>${label}</span>
+        </button>
+      `;
+    }).join("");
 
     return `
       <div class="custom-panel">
-        ${rooms.length ? `<div class="rooms-chips">${chips}</div>` : `<div class="hint">Aucune pièce configurée pour le moment.</div>`}
+        ${areaIds.length ? `<div class="rooms-chips">${chips}</div>` : `<div class="hint">Aucune pièce configurée. Ajoute des Areas dans l'éditeur de la carte (nécessite d'avoir mappé les segments du robot vers ces pièces au préalable, via l'entité vacuum > ⚙️ > "Mapper les segments vers des pièces").</div>`}
         ${modeSelect}
         ${mopSelect}
         ${fanSelect}
-        <button class="action-btn primary" id="clean-rooms" ${this._selectedRooms.size === 0 ? "disabled" : ""}>
+        <button class="action-btn primary" id="clean-rooms" ${this._selectedAreas.size === 0 ? "disabled" : ""}>
           <ha-icon icon="mdi:play"></ha-icon>
           <span>Nettoyer la sélection</span>
         </button>
@@ -795,11 +731,11 @@ class RoborockStatusCard extends HTMLElement {
     if (this._panelOpen) {
       this.shadowRoot.querySelectorAll(".room-chip").forEach((chip) => {
         chip.addEventListener("click", () => {
-          const roomId = chip.dataset.roomId;
-          if (this._selectedRooms.has(roomId)) {
-            this._selectedRooms.delete(roomId);
+          const areaId = chip.dataset.areaId;
+          if (this._selectedAreas.has(areaId)) {
+            this._selectedAreas.delete(areaId);
           } else {
-            this._selectedRooms.add(roomId);
+            this._selectedAreas.add(areaId);
           }
           this._render();
         });
@@ -821,11 +757,9 @@ class RoborockStatusCard extends HTMLElement {
       const cleanRoomsBtn = this.shadowRoot.getElementById("clean-rooms");
       if (cleanRoomsBtn) {
         cleanRoomsBtn.addEventListener("click", () => {
-          if (this._selectedRooms.size === 0) return;
-          const segments = [...this._selectedRooms].map((id) => (isNaN(Number(id)) ? id : Number(id)));
-          this._callService("vacuum", "send_command", this._config.entity, {
-            command: this._config.room_clean_command || "app_segment_clean",
-            params: [{ segments, repeat: 1 }]
+          if (this._selectedAreas.size === 0) return;
+          this._callService("vacuum", "clean_area", this._config.entity, {
+            area_id: [...this._selectedAreas]
           });
         });
       }
