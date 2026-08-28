@@ -715,9 +715,8 @@ class RoborockStatusCard extends HTMLElement {
             <span>${isActiveCycle ? "Pause" : "Démarrer"}</span>
           </button>
           ${isActiveCycle ? `
-            <button class="action-btn" id="stop-clean">
+            <button class="action-btn icon-only" id="stop-clean" title="Arrêter">
               <ha-icon icon="mdi:stop"></ha-icon>
-              <span>Arrêter</span>
             </button>
           ` : ""}
           <button class="action-btn" id="dock">
