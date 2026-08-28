@@ -381,6 +381,19 @@ class RoborockStatusCard extends HTMLElement {
     return `${Math.round(num)} ${unit}`;
   }
 
+  _formatVacuumState(st) {
+    const labels = {
+      cleaning: "Nettoyage en cours",
+      docked: "À la station",
+      idle: "En attente",
+      paused: "En pause",
+      returning: "Retour à la base",
+      error: "Erreur",
+      mopping: "Lavage en cours"
+    };
+    return labels[st.state] || (st.state.charAt(0).toUpperCase() + st.state.slice(1));
+  }
+
   _formatTimestamp(st) {
     const date = new Date(st.state);
     if (isNaN(date.getTime())) return st.state;
@@ -494,7 +507,8 @@ class RoborockStatusCard extends HTMLElement {
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
     const stateText = vacuum ? vacuum.state : "indisponible";
     const battery = vacuum && vacuum.attributes.battery_level != null ? `${vacuum.attributes.battery_level}%` : "—";
-    const isCleaning = vacuum && vacuum.state === "cleaning";
+    const inactiveStates = ["docked", "idle", "paused", "error"];
+    const isActiveCycle = vacuum && !inactiveStates.includes(vacuum.state);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -594,6 +608,11 @@ class RoborockStatusCard extends HTMLElement {
         .actions {
           display: flex;
           gap: 8px;
+          flex-wrap: wrap;
+        }
+        .action-btn:not(.icon-only) {
+          flex: 1 1 auto;
+          min-width: 90px;
         }
         .action-btn.primary {
           background: var(--primary-color);
@@ -683,7 +702,7 @@ class RoborockStatusCard extends HTMLElement {
         <div class="grid">
           ${this._renderPill("Durée", this._config.duration_entity, (st) => this._formatDuration(st))}
           ${this._renderPill("Pièce", this._config.room_entity)}
-          ${this._renderPill("Dernier passage", this._config.last_clean_entity, (st) => this._formatTimestamp(st))}
+          ${this._renderPill("État", this._config.entity, (st) => this._formatVacuumState(st))}
         </div>
 
         ${this._renderErrorChecks()}
@@ -692,9 +711,15 @@ class RoborockStatusCard extends HTMLElement {
 
         <div class="actions">
           <button class="action-btn primary" id="start-pause">
-            <ha-icon icon="${isCleaning ? "mdi:pause" : "mdi:play"}"></ha-icon>
-            <span>${isCleaning ? "Pause" : "Démarrer"}</span>
+            <ha-icon icon="${isActiveCycle ? "mdi:pause" : "mdi:play"}"></ha-icon>
+            <span>${isActiveCycle ? "Pause" : "Démarrer"}</span>
           </button>
+          ${isActiveCycle ? `
+            <button class="action-btn" id="stop-clean">
+              <ha-icon icon="mdi:stop"></ha-icon>
+              <span>Arrêter</span>
+            </button>
+          ` : ""}
           <button class="action-btn" id="dock">
             <ha-icon icon="mdi:home"></ha-icon>
             <span>Retour base</span>
@@ -716,8 +741,15 @@ class RoborockStatusCard extends HTMLElement {
     });
 
     this.shadowRoot.getElementById("start-pause").addEventListener("click", () => {
-      this._callService("vacuum", isCleaning ? "pause" : "start", this._config.entity);
+      this._callService("vacuum", isActiveCycle ? "pause" : "start", this._config.entity);
     });
+
+    const stopBtn = this.shadowRoot.getElementById("stop-clean");
+    if (stopBtn) {
+      stopBtn.addEventListener("click", () => {
+        this._callService("vacuum", "stop", this._config.entity);
+      });
+    }
 
     this.shadowRoot.getElementById("dock").addEventListener("click", () => {
       this._callService("vacuum", "return_to_base", this._config.entity);
