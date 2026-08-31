@@ -2,6 +2,7 @@ const EDITOR_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "vacuum" } } },
   { name: "name", selector: { text: {} } },
   { name: "status_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "battery_entity", selector: { entity: { domain: "sensor" } } },
   { name: "duration_entity", selector: { entity: { domain: "sensor" } } },
   { name: "room_entity", selector: { entity: { domain: "sensor" } } },
   { name: "last_clean_entity", selector: { entity: { domain: "sensor" } } },
@@ -14,6 +15,7 @@ const EDITOR_LABELS = {
   entity: "Entité vacuum (obligatoire)",
   name: "Nom affiché",
   status_entity: "Capteur : état détaillé (optionnel — remplace l'état générique, capte les phases comme le lavage de serpillière)",
+  battery_entity: "Capteur : batterie (optionnel — si le pourcentage n'est pas exposé par l'entité vacuum elle-même)",
   duration_entity: "Capteur : durée du dernier nettoyage",
   room_entity: "Capteur : pièce actuelle",
   last_clean_entity: "Capteur : fin du dernier nettoyage",
@@ -518,9 +520,14 @@ class RoborockStatusCard extends HTMLElement {
     const vacuum = this._state(this._config.entity);
     const name = this._config.name || (vacuum ? vacuum.attributes.friendly_name : this._config.entity);
     const stateText = this._currentStatusText(vacuum);
-    const battery = vacuum && vacuum.attributes.battery_level != null ? `${vacuum.attributes.battery_level}%` : "—";
+    const batteryEntity = this._config.battery_entity ? this._state(this._config.battery_entity) : null;
+    const battery = batteryEntity
+      ? `${batteryEntity.state}%`
+      : (vacuum && vacuum.attributes.battery_level != null ? `${vacuum.attributes.battery_level}%` : "—");
     const inactiveStates = ["docked", "idle", "paused", "error"];
     const isActiveCycle = vacuum && !inactiveStates.includes(vacuum.state);
+    const isResumable = vacuum && (vacuum.state === "paused" || vacuum.state === "idle");
+    const startLabel = isActiveCycle ? "Pause" : (isResumable ? "Reprise" : "Démarrer");
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -730,10 +737,12 @@ class RoborockStatusCard extends HTMLElement {
         ${this._renderScenes()}
 
         <div class="actions">
-          <button class="action-btn primary" id="start-pause">
-            <ha-icon icon="${isActiveCycle ? "mdi:pause" : "mdi:play"}"></ha-icon>
-            <span>${isActiveCycle ? "Pause" : "Démarrer"}</span>
-          </button>
+          ${!this._panelOpen ? `
+            <button class="action-btn primary" id="start-pause">
+              <ha-icon icon="${isActiveCycle ? "mdi:pause" : "mdi:play"}"></ha-icon>
+              <span>${startLabel}</span>
+            </button>
+          ` : ""}
           ${isActiveCycle ? `
             <button class="action-btn icon-only" id="stop-clean" title="Arrêter">
               <ha-icon icon="mdi:stop"></ha-icon>
@@ -763,9 +772,12 @@ class RoborockStatusCard extends HTMLElement {
       });
     });
 
-    this.shadowRoot.getElementById("start-pause").addEventListener("click", () => {
-      this._callService("vacuum", isActiveCycle ? "pause" : "start", this._config.entity);
-    });
+    const startBtn = this.shadowRoot.getElementById("start-pause");
+    if (startBtn) {
+      startBtn.addEventListener("click", () => {
+        this._callService("vacuum", isActiveCycle ? "pause" : "start", this._config.entity);
+      });
+    }
 
     const stopBtn = this.shadowRoot.getElementById("stop-clean");
     if (stopBtn) {
